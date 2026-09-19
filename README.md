@@ -59,7 +59,7 @@ Three active contact lists — Genomics Labs, Pharma Labs, Biotech Labs — filt
 **Intake form**
 A published HubSpot form with lab-specific fields captures demo requests. Submissions land in the pipeline as new contacts.
 
-**Dashboard**
+**HubSpot dashboard**
 
 ![Dashboard](docs/dashboard.png)
 
@@ -67,7 +67,7 @@ Papers processed, notes created over time, contacts by lab type, pipeline stage 
 
 ---
 
-## Workflow
+## n8n Workflow
 
 ![n8n workflow](docs/workflow.png)
 
