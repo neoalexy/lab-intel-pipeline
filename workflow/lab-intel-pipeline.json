@@ -1,0 +1,455 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "3077317c-3ec9-44e8-a229-81650f620dfd",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=retinal+imaging+diagnostics&retmax=10&retmode=json",
+        "options": {}
+      },
+      "id": "215bd5b4-7e90-48d0-82a2-7c4169321d82",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id={{$json.esearchresult.idlist.join(',')}}&retmode=xml&rettype=abstract",
+        "options": {}
+      },
+      "id": "da3a1134-d136-488f-8512-b9a536cb3cf3",
+      "name": "HTTP Request1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const xml = $input.first().json.data;\n\n// Split into article blocks so each title stays paired with its own abstract\nconst articles = xml.split('<PubmedArticle>').slice(1);\nconst strip = s => s ? s.replace(/<[^>]+>/g, '').trim() : '';\n\nconst papers = articles.map(block => {\n  const titleMatch = block.match(/<ArticleTitle[^>]*>([\\s\\S]*?)<\\/ArticleTitle>/);\n  const abstractParts = [...block.matchAll(/<AbstractText[^>]*>([\\s\\S]*?)<\\/AbstractText>/g)].map(m => m[1]);\n  return {\n    title: strip(titleMatch ? titleMatch[1] : 'No title'),\n    abstract: abstractParts.length ? strip(abstractParts.join(' ')) : 'No abstract available',\n    source: 'PubMed'\n  };\n});\n\nreturn papers.map(p => ({ json: p }));"
+      },
+      "id": "ccb97227-b5d3-4dec-890c-7d45fc76dca6",
+      "name": "Code in JavaScript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.biorxiv.org/details/biorxiv/2026-08-01/2026-09-01/0/json",
+        "options": {}
+      },
+      "id": "ec2f7ec5-6ae5-46e7-ac43-27bd3ece6f1f",
+      "name": "HTTP Request2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst collection = data.collection;\n\nreturn collection.map(paper => ({\n  json: {\n    title: paper.title,\n    abstract: paper.abstract,\n    authors: paper.authors,\n    date: paper.date,\n    category: paper.category,\n    doi: paper.doi,\n    source: 'bioRxiv'\n  }\n}));"
+      },
+      "id": "4bc4c560-127e-4aab-aa26-ecf64d508b11",
+      "name": "Code in JavaScript1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        256
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "8d419936-0c19-4231-8ce8-4dc675b43a85",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        880,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "groqApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"openai/gpt-oss-20b\", reasoning_effort: \"low\", max_tokens: 1500, messages: [ { role: \"system\", content: \"You are a research assistant writing a short digest email. Summarize the given paper in 2-3 sentences maximum. Write plain prose only: no tables, no bullet lists, no headings.\" }, { role: \"user\", content: \"Summarize this paper in 2-3 sentences, plain prose, no tables:\\n\\nTitle: \" + $json.title + \"\\nAbstract: \" + ($json.abstract || \"No abstract available\") } ] }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 2,
+              "batchInterval": 7000
+            }
+          }
+        }
+      },
+      "id": "688a4806-e976-4286-8fd1-335f60d2dcff",
+      "name": "HTTP Request3",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1328,
+        128
+      ],
+      "retryOnFail": true,
+      "credentials": {
+        "groqApi": {
+          "id": "mD3vW5rp9L9Ce31x",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const keywords = ['retinal', 'diagnostic', 'imaging', 'ophthalmology', 'clinical', 'biomarker', 'cancer', 'EEG', 'neural', 'medical', 'drug', 'disease', 'patient', 'therapy', 'genomics'];\n\nconst categoryToLabType = {\n  'neuroscience': 'Genomics',\n  'biophysics': 'Genomics', \n  'genomics': 'Genomics',\n  'biochemistry': 'Pharma',\n  'microbiology': 'Pharma',\n  'pharmacology': 'Pharma',\n  'developmental biology': 'Biotech',\n  'physiology': 'Biotech',\n  'cell biology': 'Biotech',\n  'diagnostic': 'Diagnostics',\n  'clinical': 'Diagnostics',\n  'pathology': 'Diagnostics'\n};\n\nfunction getLabType(item) {\n  const category = (item.json.category || '').toLowerCase();\n  const text = (item.json.title + ' ' + (item.json.abstract || '')).toLowerCase();\n  \n  for (const [key, labType] of Object.entries(categoryToLabType)) {\n    if (category.includes(key) || text.includes(key)) {\n      return labType;\n    }\n  }\n  return 'Biotech';\n}\n\nreturn $input.all().filter(item => {\n  const text = (item.json.title + ' ' + (item.json.abstract || '') + ' ' + (item.json.category || '')).toLowerCase();\n  return keywords.some(kw => text.includes(kw));\n}).map(item => ({ \n  json: {\n    ...item.json,\n    lab_type: getLabType(item),\n    last_digest_sent: new Date().toISOString().split('T')[0]\n  }\n}));"
+      },
+      "id": "50387211-df65-4b80-8ddf-6956ecf9584b",
+      "name": "Code in JavaScript2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const papers = $('Code in JavaScript2').all();\nconst summaries = $('HTTP Request3').all();\n\nconst esc = (s) => String(s == null ? '' : s)\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;');\n\nconst blocks = papers.map((p, i) => {\n  const title = esc(p.json.title || 'No title');\n  const source = esc(p.json.source || 'Unknown');\n  const choices = summaries[i] && summaries[i].json && summaries[i].json.choices;\n  const summary = (choices && choices[0] && choices[0].message && choices[0].message.content)\n    ? esc(choices[0].message.content)\n    : 'No summary available';\n  return '<div style=\"margin-bottom:20px;\">'\n    + '<h3 style=\"margin:0 0 4px 0;\">' + (i + 1) + '. ' + title + '</h3>'\n    + '<div style=\"color:#666;font-size:12px;margin-bottom:6px;\">Source: ' + source + '</div>'\n    + '<div>' + summary + '</div>'\n    + '</div>';\n});\n\nconst html = '<div style=\"font-family:Arial,sans-serif;line-height:1.5;\">'\n  + '<h2>Research Digest — ' + papers.length + ' papers</h2>'\n  + blocks.join('')\n  + '</div>';\n\nreturn [{ json: { html, count: papers.length } }];"
+      },
+      "id": "4b46251d-75ee-41c4-9107-a4ab9ea661c5",
+      "name": "Build Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1776,
+        128
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "sendTo": "aleksandra.crnatovic@gmail.com",
+        "subject": "=Research Digest — {{ $json.count }} papers",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "b2b1097c-e65f-4dd6-920d-e3d22841f755",
+      "name": "Send Digest Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2000,
+        128
+      ],
+      "webhookId": "ced28c6a-8487-4fd5-969b-b5a9455e0b1e",
+      "executeOnce": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "rJPSggirKUmQ5AtN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const papers = $('Code in JavaScript2').all();\nconst summaries = $('HTTP Request3').all();\n\nreturn papers.map((p, i) => {\n  const title = p.json.title || 'No title';\n  const source = p.json.source || 'Unknown';\n  const choices = summaries[i] && summaries[i].json && summaries[i].json.choices;\n  const summary = (choices && choices[0] && choices[0].message && choices[0].message.content)\n    ? choices[0].message.content\n    : 'No summary available';\n  const noteBody = '<strong>' + title + '</strong><br>Source: ' + source + '<br><br>' + summary;\n  return { json: { title, source, summary, noteBody } };\n});"
+      },
+      "id": "2d05fbc1-38bc-4515-95a1-5350fc395470",
+      "name": "Build HubSpot Notes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2224,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/engagements/v1/engagements",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ engagement: { active: true, type: \"NOTE\" }, metadata: { body: $json.noteBody } }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5
+            }
+          }
+        }
+      },
+      "id": "e9e455ba-5c01-454a-ac24-cf06b42d56c8",
+      "name": "Create HubSpot Note",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2448,
+        128
+      ],
+      "retryOnFail": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "Ga98B90rNlE9iLYR",
+          "name": "HubSpot Service Key account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.hubapi.com/crm/v3/objects/contacts/{{ $json.choices[0].message.content ? {\n  'Genomics': '871571951844',\n  'Pharma': '871481975999', \n  'Biotech': '871533973753',\n  'Diagnostics': '871533974714',\n  'CRO/CDMO': '871542090963'\n}[$('Code in JavaScript2').item.json.lab_type] : '871533974714' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"properties\": {\n    \"hs_lead_status\": \"IN_PROGRESS\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1552,
+        128
+      ],
+      "id": "e14ce369-6237-4a0c-b539-db3724cf799f",
+      "name": "HTTP Request4",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "gxDOHNP3tVkJLmn3",
+          "name": "Bearer Auth account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request3": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "HTTP Request4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Digest": {
+      "main": [
+        [
+          {
+            "node": "Send Digest Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Digest Email": {
+      "main": [
+        [
+          {
+            "node": "Build HubSpot Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build HubSpot Notes": {
+      "main": [
+        [
+          {
+            "node": "Create HubSpot Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request4": {
+      "main": [
+        [
+          {
+            "node": "Build Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "56b1b5cc-efa9-4aac-8d3e-c04e7c8c10aa",
+  "meta": {
+    "instanceId": "8526811d1f9512fa32cb6fa8ef8c2032806720893e7240a5611a9b97d0f1a530"
+  },
+  "nodeGroups": [],
+  "id": "zJxJJmfQWOJUVoxh",
+  "tags": []
+}
