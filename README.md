@@ -1,27 +1,27 @@
 # lab-intel-pipeline
 
-A scheduled pipeline that pulls biomedical papers from PubMed and bioRxiv, runs each one through an AI model for a plain-language summary, sends a daily digest by email, and writes the results back into HubSpot — tagging the right lab contact based on the paper's research category.
+A scheduled automation pipeline that aggregates biomedical literature from PubMed and bioRxiv, summarizes each paper with an AI model, delivers a daily digest by email, and enriches HubSpot CRM contacts based on the paper's research category.
 
-Built as a personal project to explore what a real automation stack looks like when HubSpot's native workflow engine isn't on the table.
+The orchestration layer is n8n. HubSpot handles CRM state, segmentation, and reporting. The two are connected via the HubSpot Private App API.
 
 ---
 
 ## What it does
 
-**Pulls from two sources**
-PubMed E-utilities API for peer-reviewed clinical and biomedical research. bioRxiv API for preprints — newer, less filtered, often where the signal shows up first.
+**Literature ingestion**
+Two parallel requests hit the PubMed E-utilities API and the bioRxiv API for papers published in a configurable date window. PubMed returns IDs first; a second call fetches full abstracts. bioRxiv returns structured JSON directly.
 
-**Filters and categorizes**
-A keyword filter removes anything outside the biomedical scope. Each paper that passes gets tagged with a lab type — Genomics, Pharma, Biotech, or Diagnostics — based on its category and abstract content.
+**Filtering and categorization**
+A keyword filter removes papers outside the biomedical domain. Each paper that passes gets tagged with a lab type — Genomics, Pharma, Biotech, or Diagnostics — based on its subject category and abstract content. This tag drives downstream CRM routing.
 
-**Summarizes with AI**
-Each paper gets a 2–3 sentence summary in plain prose. Powered by Groq (gpt-oss-20b). The prompt explicitly avoids bullet points and jargon — just what the study found.
+**AI summarization**
+Each paper gets a 2–3 sentence summary in plain prose via the Groq API (gpt-oss-20b). Reasoning effort is set low to avoid the model spending its token budget on internal chain-of-thought before producing visible output.
 
-**Writes back into HubSpot**
-The matching contact in HubSpot gets their lead status updated. A note is created for each paper — title, source, summary — attached to the relevant account. The CRM reflects that something happened in that research domain today without anyone doing it manually.
+**CRM enrichment**
+Based on the lab type tag, the pipeline finds the matching HubSpot contact and PATCHes their lead status to IN_PROGRESS. This is the automation signal — the contact record changes state because of external research activity, not because a person did something.
 
-**Sends a digest**
-Everything lands in your inbox as a clean daily email, one paper per entry, grouped by source.
+**Note creation and digest delivery**
+A HubSpot note is created per paper — title, source, AI summary — attached to the relevant contact record. A Gmail node formats everything into a single daily digest grouped by source.
 
 ---
 
@@ -39,9 +39,7 @@ bioRxiv API ─────┘                                        │
 
 ---
 
-## HubSpot CRM setup
-
-The pipeline writes into a CRM structured to receive it.
+## HubSpot CRM layer
 
 **Custom contact properties**
 - Lab Type (Genomics / Pharma / Biotech / Diagnostics / CRO/CDMO)
@@ -55,33 +53,23 @@ The pipeline writes into a CRM structured to receive it.
 **Lab Onboarding Pipeline**
 Lead → Demo Booked → Trial Started → Onboarding → Active Lab
 
-When research activity hits a contact's domain, their lead status moves to IN_PROGRESS automatically — a CRM signal that didn't require anyone to trigger it.
-
 **Segments**
-Genomics Labs, Pharma Labs, Biotech Labs — active contact lists that update automatically based on Lab Type.
+Three active contact lists — Genomics Labs, Pharma Labs, Biotech Labs — filter automatically based on Lab Type.
 
 **Intake form**
-Demo requests come in through a published HubSpot form with lab-specific fields. New leads land directly in the pipeline.
+A published HubSpot form with lab-specific fields captures demo requests. Submissions land in the pipeline as new contacts.
 
 **Dashboard**
-Papers processed, notes created over time, contacts by lab type, pipeline stage distribution, automation coverage — all live in a single HubSpot dashboard.
+
+![Dashboard](docs/dashboard.png)
+
+Papers processed, notes created over time, contacts by lab type, pipeline stage distribution, automation coverage by lead status.
 
 ---
 
-## Numbers
+## Workflow
 
-- 27 papers processed per run (10 PubMed + 17 bioRxiv after filtering)
-- 100+ notes written to HubSpot across two runs
-- 3 contact records updated per run based on lab type matching
-- Full run completes in under 2 minutes
-
----
-
-## Why n8n instead of native HubSpot workflows
-
-Native HubSpot automation requires a paid plan. More importantly, the logic here — calling external APIs, running an LLM, mapping categories to contacts — isn't something a drag-and-drop workflow builder handles cleanly regardless of plan tier.
-
-n8n handles the orchestration. HubSpot handles the CRM and reporting. Keeping those two concerns separate makes the system easier to debug and extend.
+![n8n workflow](docs/workflow.png)
 
 ---
 
@@ -94,7 +82,7 @@ n8n handles the orchestration. HubSpot handles the CRM and reporting. Keeping th
 | Preprints | bioRxiv API |
 | AI summarization | Groq (gpt-oss-20b) |
 | Email | Gmail |
-| CRM | HubSpot Free + Private App API |
+| CRM | HubSpot + Private App API |
 
 ---
 
@@ -105,7 +93,3 @@ n8n handles the orchestration. HubSpot handles the CRM and reporting. Keeping th
 3. Create the custom contact properties in HubSpot
 4. Map your contact IDs to lab types in the Contact Update node
 5. Set the Schedule trigger — default 08:00 daily
-
----
-
-[github.com/neoalexy](https://github.com/neoalexy)
